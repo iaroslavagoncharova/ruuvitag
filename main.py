@@ -1,56 +1,77 @@
 import asyncio
 from bleak import BleakScanner
 from ruuvitag_sensor.decoder import get_decoder
-from pymongo import MongoClient
+# from pymongo import MongoClient
+import requests
+import json
 from datetime import datetime, timezone, timedelta
 import schedule
 
 # List to hold the RuuviTag data temporarily
 ruuvi_data_list = []
 
-# MongoDB connection setup
-def get_db_connection():
-    try:
-        client = MongoClient("mongodb+srv://slava2:Kirpichik4@cluster0.f8iqe.mongodb.net/devicehub?retryWrites=true&w=majority&appName=Cluster0")
-        db = client["devicehub"]
-        return db
-    except Exception as e:
-        print("Error connecting to MongoDB:", e)
-        return None
+NODE_SERVER_URL = "http://localhost:3000"
 
-# Insert data into MongoDB
-def insert_ruuvitag_data(data):
-    db = get_db_connection()
-    if db is None:
-        print("Error connecting to MongoDB.")
-        return
-    
+# send data to the node js server
+def send_data_to_node_server(data):
     try:
-        ruuvi_collection = db["ruuvis"]
-        data_with_timestamp = {**data, "timestamp": datetime.now(timezone.utc)}
-        ruuvi_collection.insert_one(data_with_timestamp)
-        print("Data inserted successfully into MongoDB.")
-    except Exception as e:
-        print("Error inserting data into MongoDB:", e)
+        url = NODE_SERVER_URL + "/api/v1/ruuvi"
+        headers = {"Content-Type": "application/json"}
+        data_with_timestamp = {**data, "timestamp": datetime.now(timezone.utc).isoformat()}
+        response = requests.post(url, headers=headers, data=json.dumps(data_with_timestamp))
+        response.raise_for_status()
+        print("Data sent successfully to Node.js server.")
+    except requests.exceptions.RequestException as e:
+        print("Error sending data to Node.js server:", e)
 
 # Update device data in MongoDB
 def perform_device_data_update(data):
-    db = get_db_connection()
-    if db is None:
-        return
-
+    # Remove the `mac` field from the `data` object
     data_without_mac = {k: v for k, v in data["data"].items() if k != "mac"}
 
+    url = NODE_SERVER_URL + "/api/v1/devices"
+
     try:
-        devices_collection = db["devices"]
-        # Update only the `data` field for the document where `name` is "RuuviTag"
-        devices_collection.update_one(
-            {"name": "RuuviTag"},
-            {"$set": {"data": data_without_mac, "last_updated": datetime.now(timezone.utc)}}
+        # Get the list of devices from the Node.js server
+        response = requests.get(url)
+        response.raise_for_status()
+        devices = response.json()
+
+        # Find the relevant device
+        for device in devices:
+            if device["name"] == "RuuviTag":
+                device_id = device["_id"]
+                break
+        else:
+            print("Device not found in MongoDB 'devices' collection.")
+            return
+        
+        # Update the device's `data` field
+        url = NODE_SERVER_URL + f"/api/v1/devices/recent/{device_id}"
+        payload = {
+            "data": data_without_mac,
+        }
+        response = requests.put(
+            url,
+            headers={"Content-Type": "application/json"},
+            data=json.dumps(payload)
         )
+        response.raise_for_status()
+        
         print("Data updated successfully in MongoDB 'devices' collection.")
-    except Exception as e:
+    except requests.exceptions.RequestException as e:
         print("Error updating data in MongoDB 'devices' collection:", e)
+
+
+        # devices_collection = db["devices"]
+        # # Update only the `data` field for the document where `name` is "RuuviTag"
+        # devices_collection.update_one(
+        #     {"name": "RuuviTag"},
+        #     {"$set": {"data": data_without_mac, "last_updated": datetime.now(timezone.utc)}}
+        # )
+    #     print("Data updated successfully in MongoDB 'devices' collection.")
+    # except Exception as e:
+    #     print("Error updating data in MongoDB 'devices' collection:", e)
 
 # Decode RuuviTag data
 def parse_ruuvi_data(data):
@@ -88,7 +109,8 @@ def detection_callback(device, advertisement_data):
 def collect_and_insert_data():
     if ruuvi_data_list:
         for data in ruuvi_data_list.copy():
-            insert_ruuvitag_data(data)
+            # insert_ruuvitag_data(data)
+            send_data_to_node_server(data)
         ruuvi_data_list.clear()
 
 # Update the device data in devices
@@ -111,7 +133,7 @@ async def continuous_scan():
 
 # Set up scheduling for data collection
 schedule.every(10).seconds.do(update_device_data)
-schedule.every(1).minutes.do(collect_and_insert_data)
+schedule.every(30).seconds.do(collect_and_insert_data)
 
 # Main function to run BLE scanning and scheduling
 async def main():
