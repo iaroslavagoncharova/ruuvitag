@@ -1,7 +1,6 @@
 import asyncio
 from bleak import BleakScanner
 from ruuvitag_sensor.decoder import get_decoder
-# from pymongo import MongoClient
 import requests
 import json
 from datetime import datetime, timezone, timedelta
@@ -12,7 +11,7 @@ ruuvi_data_list = []
 
 NODE_SERVER_URL = "http://localhost:3000"
 
-# send data to the node js server
+# Send data to the Node.js server
 def send_data_to_node_server(data):
     try:
         url = NODE_SERVER_URL + "/api/v1/ruuvi"
@@ -61,17 +60,6 @@ def perform_device_data_update(data):
         print("Data updated successfully in MongoDB 'devices' collection.")
     except requests.exceptions.RequestException as e:
         print("Error updating data in MongoDB 'devices' collection:", e)
-
-
-        # devices_collection = db["devices"]
-        # # Update only the `data` field for the document where `name` is "RuuviTag"
-        # devices_collection.update_one(
-        #     {"name": "RuuviTag"},
-        #     {"$set": {"data": data_without_mac, "last_updated": datetime.now(timezone.utc)}}
-        # )
-    #     print("Data updated successfully in MongoDB 'devices' collection.")
-    # except Exception as e:
-    #     print("Error updating data in MongoDB 'devices' collection:", e)
 
 # Decode RuuviTag data
 def parse_ruuvi_data(data):
@@ -133,7 +121,7 @@ async def continuous_scan():
 
 # Set up scheduling for data collection
 schedule.every(10).seconds.do(update_device_data)
-schedule.every(30).seconds.do(collect_and_insert_data)
+schedule.every(10).minutes.do(collect_and_insert_data)
 
 # Main function to run BLE scanning and scheduling
 async def main():
