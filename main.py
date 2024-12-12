@@ -7,7 +7,8 @@ from datetime import datetime, timezone, timedelta
 import schedule
 
 # List to hold the RuuviTag data temporarily
-ruuvi_data_list = []
+ruuvi_update_list = []
+ruuvi_insert_list = []
 
 NODE_SERVER_URL = "http://localhost:3000"
 
@@ -88,25 +89,28 @@ def detection_callback(device, advertisement_data):
                         }
                     }
                     # Add the extracted data to the list
-                    ruuvi_data_list.append(ruuvi_data)
+                    ruuvi_update_list.append(ruuvi_data)
+                    ruuvi_insert_list.append(ruuvi_data)
                     print(f"Parsed sensor data: {ruuvi_data}")
         else:
             print("No manufacturer data found for RuuviTag.")
 
 # Insert data to ruuvis
 def collect_and_insert_data():
-    if ruuvi_data_list:
-        for data in ruuvi_data_list.copy():
-            # insert_ruuvitag_data(data)
+    print("Collecting and inserting RuuviTag data...")
+    print("Data to be inserted:", ruuvi_insert_list)
+    if ruuvi_insert_list:
+        for data in ruuvi_insert_list.copy():
             send_data_to_node_server(data)
-        ruuvi_data_list.clear()
+        ruuvi_insert_list.clear()
 
 # Update the device data in devices
 def update_device_data():
-    if ruuvi_data_list:
-        for data in ruuvi_data_list.copy():
+    print("Updating device data...")
+    if ruuvi_update_list:
+        for data in ruuvi_update_list.copy():
             perform_device_data_update(data)
-        ruuvi_data_list.clear()
+        ruuvi_update_list.clear()
 
 # BLE scanning function
 async def continuous_scan():
